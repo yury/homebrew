@@ -24,20 +24,20 @@
 
 module HomebrewEnvExtension
   # -w: keep signal to noise high
-  # -fomit-frame-pointer: we are not debugging this software, we are using it
-  SAFE_CFLAGS_FLAGS = "-w -pipe -fomit-frame-pointer"
+  SAFE_CFLAGS_FLAGS = "-w -pipe"
 
   def setup_build_environment
     # Clear CDPATH to avoid make issues that depend on changing directories
     ENV.delete('CDPATH')
 
-    ENV['MACOSX_DEPLOYMENT_TARGET']=MACOS_VERSION.to_s
     ENV['MAKEFLAGS']="-j#{Hardware.processor_count}"
 
     unless HOMEBREW_PREFIX.to_s == '/usr/local'
-      # /usr/local is always in the build system path so only add other paths
-      ENV['CPPFLAGS'] = "-I#{HOMEBREW_PREFIX}/include"
+      # /usr/local is already an -isystem and -L directory so we skip it
+      ENV['CPPFLAGS'] = "-isystem #{HOMEBREW_PREFIX}/include"
       ENV['LDFLAGS'] = "-L#{HOMEBREW_PREFIX}/lib"
+      # CMake ignores the variables above
+      ENV['CMAKE_PREFIX_PATH'] = "#{HOMEBREW_PREFIX}"
     else
       # ignore existing build vars, thus we should have less bugs to deal with
       ENV['CPPFLAGS'] = ''
@@ -49,9 +49,9 @@ module HomebrewEnvExtension
       prefix = `/usr/bin/xcode-select -print-path`.chomp
       prefix = "/Developer" if prefix.to_s.empty?
 
-      ENV['CC'] = "#{prefix}/usr/llvm-gcc-4.2/bin/llvm-gcc-4.2"
-      ENV['CXX'] = "#{prefix}/usr/llvm-gcc-4.2/bin/llvm-g++-4.2"
-      cflags = ['-O4'] # O4 baby!
+      ENV['CC'] = "#{prefix}/usr/bin/llvm-gcc"
+      ENV['CXX'] = "#{prefix}/usr/bin/llvm-g++"
+      cflags = %w{-O4} # link time optimisation baby!
     else
       ENV['CC']="gcc-4.2"
       ENV['CXX']="g++-4.2"
@@ -94,7 +94,7 @@ module HomebrewEnvExtension
       cflags<<"-msse3"
     end
 
-    ENV['CFLAGS']=ENV['CXXFLAGS']="#{cflags*' '} #{SAFE_CFLAGS_FLAGS} -mmacosx-version-min=#{MACOS_VERSION}"
+    ENV['CFLAGS'] = ENV['CXXFLAGS'] = "#{cflags*' '} #{SAFE_CFLAGS_FLAGS}"
   end
   
   def deparallelize
@@ -104,14 +104,18 @@ module HomebrewEnvExtension
 
   def O3
     # Sometimes O4 just takes fucking forever
-    remove_from_cflags '-O4'
+    remove_from_cflags /-O./
     append_to_cflags '-O3'
   end
   def O2
     # Sometimes O3 doesn't work or produces bad binaries
-    remove_from_cflags '-O4'
-    remove_from_cflags '-O3'
+    remove_from_cflags /-O./
     append_to_cflags '-O2'
+  end
+  def Os
+    # Sometimes you just want a small one
+    remove_from_cflags /-O./
+    append_to_cflags '-Os'
   end
 
   def gcc_4_0_1
@@ -130,6 +134,8 @@ module HomebrewEnvExtension
     remove_from_cflags '-msse4.1'
     remove_from_cflags '-msse4.2'
   end
+  alias_method :gcc_4_0, :gcc_4_0_1
+
   def gcc_4_2
     # Sometimes you want to downgrade from LLVM to GCC 4.2
     self['CC']="gcc-4.2"
@@ -155,13 +161,18 @@ module HomebrewEnvExtension
   def no_optimization
     self['CFLAGS']=self['CXXFLAGS'] = SAFE_CFLAGS_FLAGS
   end
+
   def libxml2
     append_to_cflags ' -I/usr/include/libxml2'
   end
   def x11
+    opoo "You do not have X11 installed, this formula may not build." if not x11_installed?
+    
     # CPPFLAGS are the C-PreProcessor flags, *not* C++!
     append 'CPPFLAGS', '-I/usr/X11R6/include'
     append 'LDFLAGS', '-L/usr/X11R6/lib'
+    # CMake ignores the variables above
+    append 'CMAKE_PREFIX_PATH', '/usr/X11R6', ':'
   end
   alias_method :libpng, :x11
   # we've seen some packages fail to build when warnings are disabled!
@@ -178,26 +189,22 @@ module HomebrewEnvExtension
     ENV['CC'] or "gcc"
   end
   def cxx
-    ENV['cxx'] or "g++"
+    ENV['CXX'] or "g++"
   end
 
   def m64
     append_to_cflags '-m64'
-    ENV['LDFLAGS'] += '-arch x86_64'
+    ENV.append 'LDFLAGS', '-arch x86_64'
   end
   def m32
     append_to_cflags '-m32'
-    ENV['LDFLAGS'] += '-arch i386'
+    ENV.append 'LDFLAGS', '-arch i386'
   end
 
   # i386 and x86_64 only, no PPC
   def universal_binary
     append_to_cflags '-arch i386 -arch x86_64'
-    if self['CFLAGS'].include? '-O4'
-      # O4 seems to cause the build to fail
-      remove_from_cflags '-O4'
-      append_to_cflags '-O3'
-    end
+    ENV.O3 if self['CFLAGS'].include? '-O4' # O4 seems to cause the build to fail
   end
 
   def prepend key, value, separator = ' '

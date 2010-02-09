@@ -1,22 +1,54 @@
 require 'formula'
 
 class Emacs <Formula
-  head 'git://git.savannah.gnu.org/emacs.git'
-  url 'http://ftp.gnu.org/pub/gnu/emacs/emacs-23.1.tar.bz2'
+  if ARGV.include? "--cocoa"
+    # 98643 is the same bzr rev as the old git sha db44e1e
+    # but both bzr@98643 and bzr@trunk fail with 'digest-doc' not found
+    head 'bzr://http://bzr.savannah.gnu.org/r/emacs/trunk', :tag => '98643'
+  else
+    url 'http://ftp.gnu.org/pub/gnu/emacs/emacs-23.1.tar.bz2'
+    head 'bzr://http://bzr.savannah.gnu.org/r/emacs/trunk'
+    md5 '17f7f0ba68a0432d58fa69d05a2225be'
+  end
   homepage 'http://www.gnu.org/software/emacs/'
-  md5 '17f7f0ba68a0432d58fa69d05a2225be'
+
+  def caveats
+    "Use --cocoa to build a Cocoa binary Emacs.app from HEAD.
+
+To access texinfo documentation, set your INFOPATH to:
+#{info}
+
+Emacs recently changed to bazaar, so you may have to delete the
+cached git directory before you can update. This should be somewhere like
+$HOME/Library/Caches/Homebrew/emacs-HEAD/
+"
+  end
   
   def patches
-    DATA
+    if ARGV.include? "--cocoa"
+      "http://dev.boris.com.au/emacs-23.1-CVS-Cocoa-homebrew.patch"
+    elsif not ARGV.include? "--HEAD"
+      DATA
+    end
   end
 
   def install
-    system "./configure", "--prefix=#{prefix}",
-			  "--disable-debug",
-			  "--disable-dependency-tracking",
-			  "--without-x"
-    system "make"
-    system "make install"
+    if ARGV.include? "--cocoa"
+      system "./configure", "--prefix=#{prefix}",
+  			  "--disable-debug",
+  			  "--disable-dependency-tracking",
+  			  "--with-ns", "--disable-ns-self-contained"
+  		system "make bootstrap"
+  		system "make install"
+  		prefix.install "nextstep/Emacs.app"
+    else
+      system "./configure", "--prefix=#{prefix}",
+  			  "--disable-debug",
+  			  "--disable-dependency-tracking",
+  			  "--without-x"
+  		system "make"
+  		system "make install"
+    end
   end
 end
 

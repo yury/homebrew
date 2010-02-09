@@ -1,26 +1,64 @@
 require 'formula'
+require 'hardware'
 
 class Qt <Formula
-  url 'http://get.qt.nokia.com/qt/source/qt-mac-opensource-src-4.5.3.tar.gz'
-  md5 'c549d6c0c2e0723377cb955c78a1b680'
+  url 'http://get.qt.nokia.com/qt/source/qt-everywhere-opensource-src-4.6.1.tar.gz'
+  md5 '0542a4be6425451ab5f668c6899cac36'
   homepage 'http://www.qtsoftware.com'
 
+  def options
+    [
+      ['--with-qtdbus', "Enable QtDBus module."],
+      ['--with-qt3support', "Enable deprecated Qt3Support module."],
+    ]
+  end
+  
+  def self.x11?
+    File.exist? "/usr/X11R6/lib"
+  end
+
+  depends_on "d-bus" if ARGV.include? '--with-qtdbus'
+  depends_on 'libpng' unless x11?
+
   def install
-    if version == '4.5.3'
-      # Reported 6 months ago (at 4.5.0-rc1), still not fixed in the this release! :(
+    if version == '4.6.1' # being specific so needs reconfirmed each version
+      # Bug reported here: http://bugreports.qt.nokia.com/browse/QTBUG-7630
       makefiles=%w[plugins/sqldrivers/sqlite/sqlite.pro 3rdparty/webkit/WebCore/WebCore.pro]
       makefiles.each { |makefile| `echo 'LIBS += -lsqlite3' >> src/#{makefile}` }
     end
 
     conf_args = ["-prefix", prefix,
                  "-system-sqlite", "-system-libpng", "-system-zlib",
-                 "-nomake", "demos", "-nomake", "examples", "-no-qt3support",
+                 "-nomake", "demos", "-nomake", "examples",
                  "-release", "-cocoa",
                  "-confirm-license", "-opensource",
-                 "-I/usr/X11R6/include", "-L/usr/X11R6/lib",
                  "-fast"]
-    
-    if MACOS_VERSION >= 10.6
+
+    conf_args << "-plugin-sql-mysql" if (HOMEBREW_CELLAR+"mysql").directory?
+
+    if ARGV.include? '--with-qtdbus'
+      conf_args << "-I#{Formula.factory('d-bus').lib}/dbus-1.0/include"
+      conf_args << "-I#{Formula.factory('d-bus').include}/dbus-1.0"
+      conf_args << "-L#{Formula.factory('d-bus').lib}"
+      conf_args << "-ldbus-1"
+      conf_args << "-dbus-linked"
+    end
+
+    if ARGV.include? '--with-qt3support'
+      conf_args << "-qt3support"
+    else
+      conf_args << "-no-qt3support"
+    end
+
+    if Qt.x11?
+      conf_args << "-L/usr/X11R6/lib"
+      conf_args << "-I/usr/X11R6/include"
+    else
+      conf_args << "-L#{Formula.factory('libpng').lib}"
+      conf_args << "-I#{Formula.factory('libpng').include}"
+    end
+
+    if MACOS_VERSION >= 10.6 and Hardware.is_64_bit?
       conf_args << '-arch' << 'x86_64'
     else
       conf_args << '-arch' << 'x86'
@@ -29,19 +67,23 @@ class Qt <Formula
     system "./configure", *conf_args
     system "make install"
 
-    # fuck weird prl files
+    # remove unneeded files
     `find #{lib} -name \*.prl -delete`
-    # fuck crazy disk usage
-    `rm -r #{prefix+'doc'+'html'} #{prefix+'doc'+'src'}`
-    # wtf are these anyway?
-    `rm -r #{bin}/Assistant_adp.app #{bin}/pixeltool.app #{bin}/qhelpconverter.app`
-    # we specified no debug already! :P
-    `rm #{lib}/libQtUiTools_debug.a`
-    # meh
-    `rm #{prefix}/q3porting.xml`
+    # stop crazy disk usage
+    (prefix+'doc'+'html').rmtree
+    (prefix+'doc'+'src').rmtree
+    # what are these anyway?
+    (bin+'Assistant_adp.app').rmtree
+    (bin+'pixeltool.app').rmtree
+    (bin+'qhelpconverter.app').rmtree
+    # remove debugging files that slipped through
+    (lib+'libQtUiTools_debug.a').unlink
+    (lib+'pkgconfig/QtUiTools_debug.pc').unlink
+    # remove porting file for non-humans
+    (prefix+'q3porting.xml').unlink
   end
 
   def caveats
-    "We agreed to the Qt opensource license for you.\nIf this is unacceptable you should uninstall :P"
+    "We agreed to the Qt opensource license for you.\nIf this is unacceptable you should uninstall."
   end
 end

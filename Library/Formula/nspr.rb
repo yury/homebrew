@@ -1,14 +1,23 @@
 require 'formula'
 
 class Nspr <Formula
-  @url='https://ftp.mozilla.org/pub/mozilla.org/nspr/releases/v4.7.5/src/nspr-4.7.5.tar.gz'
+  @url='https://ftp.mozilla.org/pub/mozilla.org/nspr/releases/v4.7.6/src/nspr-4.7.6.tar.gz'
   @homepage='http://www.mozilla.org/projects/nspr/'
-  @md5='f76d459a9e589d41d65314357a853783'
+  @md5='c78384602b4b466081a55025446641db'
 
   def install
+    require 'hardware'
+
     ENV.deparallelize
     Dir.chdir "mozilla/nsprpub" do
-      system "./configure", "--prefix=#{prefix}", "--disable-debug", "--enable-strip"
+      inreplace "pr/src/Makefile.in", "-framework CoreServices -framework CoreFoundation", ""
+
+      conf = %W[--prefix=#{prefix} --disable-debug --enable-strip --enable-optimize]
+      conf << "--enable-64bit" if Hardware.is_64_bit? and MACOS_VERSION >= 10.6
+      system "./configure", *conf
+
+      inreplace "config/autoconf.mk", "-install_name @executable_path/$@ ", ""
+
       system "make"
       system "make install"
     end

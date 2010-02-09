@@ -2,8 +2,8 @@ require 'formula'
 
 class Mysql <Formula
   @homepage='http://dev.mysql.com/doc/refman/5.1/en/'
-  @url='http://mysql.llarian.net/Downloads/MySQL-5.1/mysql-5.1.39.tar.gz'
-  @md5='55a398daeb69a778fc46573623143268'
+  @url='http://mysql.llarian.net/Downloads/MySQL-5.1/mysql-5.1.41.tar.gz'
+  @md5='b5d39e8789174753f3c782959729e68c'
 
   depends_on 'readline'
 
@@ -31,6 +31,7 @@ class Mysql <Formula
       "--disable-dependency-tracking",
       "--prefix=#{prefix}",
       "--localstatedir=#{var}/mysql",
+      "--sysconfdir=#{etc}",
       "--with-plugins=innobase,myisam",
       "--with-extra-charsets=complex",
       "--with-ssl",
@@ -43,6 +44,8 @@ class Mysql <Formula
 
     system "./configure", *configure_args
     system "make install"
+
+    FileUtils.ln_s "#{prefix}/libexec/mysqld", "#{prefix}/bin/mysqld"
 
     (prefix+'mysql-test').rmtree unless ARGV.include? '--with-tests' # save 66MB!
     (prefix+'sql-bench').rmtree unless ARGV.include? '--with-bench'
@@ -77,9 +80,9 @@ Or start manually with:
   <key>RunAtLoad</key>
   <true/>
   <key>UserName</key>
-  <string>#{`whoami`}</string>
+  <string>#{`whoami`.chomp}</string>
   <key>WorkingDirectory</key>
-  <string>#{HOMEBREW_PREFIX}</string>
+  <string>#{HOMEBREW_PREFIX}/var</string>
 </dict>
 </plist>
     EOPLIST

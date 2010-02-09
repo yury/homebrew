@@ -9,7 +9,11 @@ class Icu4c <Formula
   def patches
     DATA
   end
-  
+
+  def keg_only?
+    "conflicts (see http://github.com/mxcl/homebrew/issues/#issue/167)."
+  end
+
   def install
     config_flags = ["--prefix=#{prefix}", "--disable-samples", "--enable-static"]
     config_flags << "--with-library-bits=64" if Hardware.is_64_bit? and MACOS_VERSION == 10.6
@@ -18,12 +22,6 @@ class Icu4c <Formula
       system "make"
       system "make install"
     end
-  end
-  
-  def caveats; <<-EOS
-ICU doesn't like to build on Snow Leopard with all the heavy CFLAG
-optimizations, primarily -O4. Try ENV.O3 in the install function
-    EOS
   end
 end
 

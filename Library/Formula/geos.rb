@@ -1,11 +1,12 @@
 require 'formula'
 
 class Geos <Formula
-  url 'http://download.osgeo.org/geos/geos-3.1.1.tar.bz2'
+  url 'http://download.osgeo.org/geos/geos-3.2.0.tar.bz2'
   homepage 'http://trac.osgeo.org/geos/'
-  md5 '196f4424aa4ef94476e6886d3a964fb6'
+  md5 'bfad7129680f0107b6ca9a2b92a2c440'
 
   def install
+    ENV.O3
     system "./configure", "--prefix=#{prefix}", "--disable-debug", "--disable-dependency-tracking"
     system "make install"
   end

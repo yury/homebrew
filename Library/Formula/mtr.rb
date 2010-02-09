@@ -10,6 +10,9 @@ class Mtr <Formula
     ENV['LIBS']= "-lresolv"
     system "./configure", "--prefix=#{prefix}", "--disable-debug", "--disable-dependency-tracking"
     system "make install"
-    bin.install "mtr"
+  end
+
+  def caveats
+    "Run mtr sudo'd in order to avoid the error: `unable to get raw sockets'"
   end
 end

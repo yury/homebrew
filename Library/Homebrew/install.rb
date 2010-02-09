@@ -1,18 +1,9 @@
 #!/usr/bin/ruby
 require 'global'
 
-require 'brew.h'
-require 'extend/ENV'
-require 'fileutils'
-require 'formula'
-require 'hardware'
-require 'keg'
-
-show_summary_heading = false
-
 def text_for_keg_only_formula f
   if f.keg_only? == :provided_by_osx
-    rationale = "This because the formula is already provided by OS X."
+    rationale = "This is because the formula is already provided by OS X."
   elsif f.keg_only?.kind_of? String
     rationale = "The formula provides the following rationale:\n\n#{f.keg_only?.chomp}"
   else
@@ -26,16 +17,43 @@ Generally there are no consequences of this for you, however if you build your
 own software and it requires this formula, you may want to run this command to
 link it into the Homebrew prefix:
 
-     brew link #{f.name}
-EOS
+    brew link #{f.name}
+  EOS
 end
 
+# I like this little at all, but see no alternative seeing as the formula
+# rb file has to be the running script to allow it to use __END__ and DATA
+at_exit do
+  begin
+    raise $! if $! # an exception was already thrown when parsing the formula
+
+    require 'extend/ENV'
+    require 'fileutils'
+    require 'hardware'
+    require 'keg'
+    require 'brew.h.rb'
+
+    ENV.extend(HomebrewEnvExtension)
+    ENV.setup_build_environment
+
+    install(Formula.factory($0))
+  rescue Exception => e
+    if ENV['HOMEBREW_ERROR_PIPE']
+      pipe = IO.new(ENV['HOMEBREW_ERROR_PIPE'].to_i, 'w')
+      Marshal.dump(e, pipe)
+      pipe.close
+      exit! 1
+    else
+      onoe e
+      puts e.backtrace
+      exit! 2
+    end
+  end
+end
 
 def install f
-  # we deliberately only do this when install is run, although it may be the wrong decision…
-  ENV.extend(HomebrewEnvExtension)
-  ENV.setup_build_environment
-  
+  show_summary_heading = false
+
   f.deps.each do |dep|
     dep = Formula.factory dep
     if dep.keg_only?
@@ -48,7 +66,7 @@ def install f
 
   if ARGV.verbose?
     ohai "Build Environment"
-    %w[PATH CFLAGS LDFLAGS CPPFLAGS MAKEFLAGS CC CXX MACOSX_DEPLOYMENT_TARGET].each do |env|
+    %w[PATH CFLAGS LDFLAGS CPPFLAGS MAKEFLAGS CC CXX MACOSX_DEPLOYMENT_TARGET PKG_CONFIG_PATH].each do |env|
       puts "#{env}: #{ENV[env]}" unless ENV[env].to_s.empty?
     end
   end
@@ -90,7 +108,7 @@ def install f
   end
 
   ohai 'Finishing up' if ARGV.verbose?
-  
+
   begin
     clean f
   rescue Exception => e
@@ -114,7 +132,7 @@ def install f
         show_summary_heading = true
       end
     end
-  end
+  end unless f.keg_only?
 
   if f.keg_only?
     ohai 'Caveats', text_for_keg_only_formula(f)
@@ -135,21 +153,4 @@ def install f
   print "#{f.prefix}: #{f.prefix.abv}"
   print ", built in #{pretty_duration build_time}" if build_time
   puts
-
-rescue Exception => e
-  if ENV['HOMEBREW_ERROR_PIPE']
-    pipe = IO.new(ENV['HOMEBREW_ERROR_PIPE'].to_i, 'w')
-    Marshal.dump(e, pipe)
-    pipe.close
-    exit! 1
-  else
-    onoe e
-    puts e.backtrace
-    exit! 2
-  end
 end
-
-
-# I like this little at all, but see no alternative seeing as the formula
-# rb file has to be the running script to allow it to use __END__ and DATA
-at_exit { install(Formula.factory($0)) }

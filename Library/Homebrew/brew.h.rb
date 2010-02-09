@@ -21,13 +21,44 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 #  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-FORMULA_META_FILES = %w[README ChangeLog COPYING LICENSE COPYRIGHT AUTHORS]
+FORMULA_META_FILES = %w[README README.md ChangeLog COPYING LICENSE LICENCE COPYRIGHT AUTHORS]
+PLEASE_REPORT_BUG = "#{Tty.white}Please report this bug at #{Tty.em}http://github.com/mxcl/homebrew/issues#{Tty.reset}"
+
+def check_for_blacklisted_formula names
+  return if ARGV.force?
+
+  names.each do |name|
+    case name
+      # bazaar don't maintain their PyPi entry properly yet
+      # when they do we'll remove our formula and use that
+#    when 'bazaar', 'bzr' then abort <<-EOS
+#Bazaar can be installed thusly:
+#
+#    brew install pip && pip install bzr==2.0.1
+#
+#    EOS
+    when 'mercurial', 'hg' then abort <<-EOS
+Mercurial can be install thusly:
+
+    brew install pip && pip install mercurial
+
+    EOS
+    end
+  end
+end
 
 def __make url, name
   require 'formula'
 
   path = Formula.path name
   raise "#{path} already exists" if path.exist?
+  
+  # Check if a formula aliased to this name exists.
+  already_aka = Formulary.find_alias name
+  if already_aka != nil
+    opoo "Formula #{already_aka} is aliased to #{name}."
+    puts "Please check if you are creating a duplicate."
+  end
 
   template=<<-EOS
             require 'formula'
@@ -114,30 +145,51 @@ ENV.libxml2 in your formula's install function.
 
 #{force_text}
     EOS
+  when /rubygem/
+    raise "Sorry RubyGems comes with OS X so we don't package it.\n\n#{force_text}"
+  when /wxwidgets/
+    raise <<-EOS
+#{name} is blacklisted for creation
+An older version of wxWidgets is provided by Apple with OS X, but
+a formula for wxWidgets 2.8.10 is provided:
+
+    brew install wxmac
+
+  #{force_text}
+    EOS
   end unless ARGV.force?
 
   __make url, name
 end
 
+def github_info name
+  formula_name = Formula.path(name).basename
+  user = ''
+  branch = ''
+
+  if system "/usr/bin/which -s git"
+    user=`git config --global github.user`.chomp
+    all_branches = `git branch 2>/dev/null`
+     /^\*\s*(.*)/.match all_branches
+    branch = ($1 || '').chomp
+  end
+  
+  user = 'mxcl' if user.empty?
+  branch = 'master' if user.empty?
+
+  return "http://github.com/#{user}/homebrew/commits/#{branch}/Library/Formula/#{formula_name}"
+end
 
 def info name
   require 'formula'
 
-  user=''
-  user=`git config --global github.user`.chomp if system "/usr/bin/which -s git"
-  user='mxcl' if user.empty?
-  # FIXME it would be nice if we didn't assume the default branch is master
-  history="http://github.com/#{user}/homebrew/commits/master/Library/Formula/#{Formula.path(name).basename}"
-
-  exec 'open', history if ARGV.flag? '--github'
+  exec 'open', github_info(name) if ARGV.flag? '--github'
 
   f=Formula.factory name
   puts "#{f.name} #{f.version}"
   puts f.homepage
 
-  if not f.deps.empty?
-    puts "Depends on: #{f.deps.join(', ')}"
-  end
+  puts "Depends on: #{f.deps.join(', ')}" unless f.deps.empty?
 
   if f.prefix.parent.directory?
     kids=f.prefix.parent.children
@@ -156,7 +208,8 @@ def info name
     puts
   end
 
-  puts history
+  history = github_info(name)
+  puts history if history
 
 rescue FormulaUnavailableError
   # check for DIY installation
@@ -169,6 +222,49 @@ rescue FormulaUnavailableError
   end
 end
 
+def issues_for_formula name
+  # bit basic as depends on the issue at github having the exact name of the
+  # formula in it. Which for stuff like objective-caml is unlikely. So we
+  # really should search for aliases too.
+
+  name = f.name if Formula === name
+
+  require 'open-uri'
+  require 'yaml'
+
+  issues = []
+
+  open("http://github.com/api/v2/yaml/issues/search/mxcl/homebrew/open/"+name) do |f|
+    YAML::load(f.read)['issues'].each do |issue|
+      issues << 'http://github.com/mxcl/homebrew/issues/#issue/%s' % issue['number']
+    end
+  end
+
+  issues
+rescue
+  []
+end
+
+def cleanup name
+  require 'formula'
+
+  f = Formula.factory name
+
+  # we can't tell which one to keep in this circumstance
+  raise "The most recent version of #{name} is not installed" unless f.installed?
+
+  if f.prefix.parent.directory?
+    kids = f.prefix.parent.children
+    kids.each do |keg|
+      next if f.prefix == keg
+      print "Uninstalling #{keg}..."
+      FileUtils.rm_rf keg
+      puts
+    end
+  end
+
+  prune # seems like a good time to do some additional cleanup
+end
 
 def clean f
   Cleaner.new f
@@ -189,15 +285,6 @@ def clean f
       d.rmdir
     end
   end
-end
-
-
-def expand_deps ff
-  deps = []
-  ff.deps.collect do |f|
-    deps += expand_deps(Formula.factory(f))
-  end
-  deps << ff
 end
 
 
@@ -262,47 +349,39 @@ def diy
   end
 end
 
-
-def warn_about_macports_or_fink
+def macports_or_fink_installed?
   # See these issues for some history:
   # http://github.com/mxcl/homebrew/issues/#issue/13
   # http://github.com/mxcl/homebrew/issues/#issue/41
   # http://github.com/mxcl/homebrew/issues/#issue/48
-  
+
   %w[port fink].each do |ponk|
     path = `/usr/bin/which -s #{ponk}`
-    unless path.empty?
-      opoo "It appears you have Macports or Fink in your PATH"
-      puts "If formula fail to build try renaming or uninstalling these tools."
-    end
+    return ponk unless path.empty?
   end
-  
+
   # we do the above check because macports can be relocated and fink may be
   # able to be relocated in the future. This following check is because if
   # fink and macports are not in the PATH but are still installed it can
   # *still* break the build -- because some build scripts hardcode these paths:
   %w[/sw/bin/fink /opt/local/bin/port].each do |ponk|
-    if File.exist? ponk
-      opoo "It appears you have MacPorts or Fink installed"
-      puts "If formula fail to build, consider renaming: %s" % Pathname.new(ponk).dirname.parent
-    end
+    return ponk if File.exist? ponk
   end
-  
-  # finally sometimes people make their MacPorts or Fink read-only so they
+
+  # finally, sometimes people make their MacPorts or Fink read-only so they
   # can quickly test Homebrew out, but still in theory obey the README's 
   # advise to rename the root directory. This doesn't work, many build scripts
   # error out when they try to read from these now unreadable directories.
   %w[/sw /opt/local].each do |path|
-    if File.exist? path and not File.readable? path
-      opoo "It appears you have MacPorts or Fink installed"
-      puts "This has been known to cause build fails and other more subtle problems."
-    end
+    path = Pathname.new(path)
+    return path if path.exist? and not path.readable?
   end
+  
+  false
 end
 
-
 def versions_of(keg_name)
-  `ls #{HOMEBREW_CELLAR}/#{keg_name}`.collect { |version| version.strip }.reverse
+  `/bin/ls #{HOMEBREW_CELLAR}/#{keg_name}`.collect { |version| version.strip }.reverse
 end
 
 
@@ -381,11 +460,11 @@ class Cleaner
     # you can read all of this stuff online nowadays, save the space
     # info pages are pants, everyone agrees apart from Richard Stallman
     # feel free to ask for build options though! http://bit.ly/Homebrew
-    (f.prefix+'share'+'doc').rmtree rescue nil
-    (f.prefix+'share'+'info').rmtree rescue nil
-    (f.prefix+'doc').rmtree rescue nil
-    (f.prefix+'docs').rmtree rescue nil
-    (f.prefix+'info').rmtree rescue nil
+    unlink = Proc.new{ |path| path.unlink unless f.skip_clean? path rescue nil }
+    %w[doc docs info].each do |fn|
+      unlink.call(f.share+fn)
+      unlink.call(f.prefix+fn)
+    end
   end
 
 private
@@ -394,14 +473,19 @@ private
     puts "strip #{path}" if ARGV.verbose?
     path.chmod 0644 # so we can strip
     unless path.stat.nlink > 1
-      `strip #{args} #{path}`
+      system "strip", *(args+path)
     else
+      path = path.to_s.gsub ' ', '\\ '
+
       # strip unlinks the file and recreates it, thus breaking hard links!
       # is this expected behaviour? patch does it too… still, this fixes it
-      tmp=`mktemp -t #{path.basename}`.strip
-      `strip #{args} -o #{tmp} #{path}`
-      `cat #{tmp} > #{path}`
-      File.unlink tmp
+      tmp = `/usr/bin/mktemp -t homebrew_strip`.chomp
+      begin
+        `/usr/bin/strip #{args} -o #{tmp} #{path}`
+        `/bin/cat #{tmp} > #{path}`
+      ensure
+        FileUtils.rm tmp
+      end
     end
   end
 
@@ -409,7 +493,10 @@ private
     perms=0444
     case `file -h '#{path}'`
     when /Mach-O dynamically linked shared library/
-      strip path, '-SxX'
+      # Stripping libraries is causing no end of trouble
+      # Lets just give up, and try to do it manually in instances where it
+      # makes sense
+      #strip path, '-SxX'
     when /Mach-O [^ ]* ?executable/
       strip path
       perms=0555
@@ -433,4 +520,30 @@ private
       end
     end
   end
+end
+
+def gcc_build
+  `/usr/bin/gcc-4.2 -v 2>&1` =~ /build (\d{4,})/
+  if $1
+    $1.to_i 
+  elsif system "/usr/bin/which gcc"
+    # Xcode 3.0 didn't come with gcc-4.2
+    # We can't change the above regex to use gcc because the version numbers
+    # are different and thus, not useful.
+    # FIXME I bet you 20 quid this causes a side effect — magic values tend to
+    401
+  else
+    nil
+  end
+end
+
+def llvm_build
+  if MACOS_VERSION >= 10.6
+    `/Developer/usr/bin/llvm-gcc-4.2 -v 2>&1` =~ /LLVM build (\d{4,})/  
+    $1.to_i
+  end
+end
+
+def x11_installed?
+  Pathname.new('/usr/X11/lib/libpng.dylib').exist?
 end
