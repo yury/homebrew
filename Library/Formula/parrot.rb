@@ -2,18 +2,15 @@ require 'formula'
 
 class Parrot <Formula
   head 'bzr://https://launchpad.net/parrot/trunk'
-  url 'ftp://ftp.parrot.org//pub/parrot/releases/stable/2.0.0/parrot-2.0.0.tar.gz'
+  url 'ftp://ftp.parrot.org/pub/parrot/releases/devel/2.1.1/parrot-2.1.1.tar.gz'
   homepage 'http://www.parrot.org/'
-  md5 'a28e09358a31ed93601deb8e5000a5f5'
+  md5 'fee8e22fad229fdc493431a2b75f038d'
 
   depends_on 'pcre'
 
   def install
-    confargs = %W[--prefix=#{prefix} --debugging=0 --without-opengl]
-    # the arguments Parrot tries to pass to gcc-4.2 on 10.5 don't compile
-    confargs << "--cc=#{ENV['CC']}" if MACOS_VERSION >= 10.6
-
-    system "perl", "Configure.pl", *confargs
+    system "perl", "Configure.pl", "--prefix=#{prefix}", "--debugging=0",
+                                   "--without-opengl", "--cc=#{ENV.cc}"
     system "make"
     system "make install"
 

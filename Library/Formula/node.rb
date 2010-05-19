@@ -1,10 +1,10 @@
 require 'formula'
 
 class Node <Formula
-  url 'http://s3.amazonaws.com/four.livejournal/20100203/node-v0.1.27.tar.gz'
+  url 'http://nodejs.org/dist/node-v0.1.94.tar.gz'
   head 'git://github.com/ry/node.git'
   homepage 'http://nodejs.org/'
-  md5 '7dffe5ee6a6f531d711235d1227b0989'
+  md5 '2a00143e306cd8d6b36f2d50307e37cd'
 
   aka 'node.js'
   
@@ -18,7 +18,20 @@ class Node <Formula
 
   def install
     ENV.gcc_4_2
+    inreplace %w{wscript configure} do |s|
+      s.gsub! '/usr/local', HOMEBREW_PREFIX
+      s.gsub! '/opt/local/lib', '/usr/lib'
+    end
     system "./configure", "--prefix=#{prefix}"
     system "make install"
+  end
+  
+  def caveats; <<-EOS.undent
+    If you:
+      brew install rlwrap
+    then you can:
+      rlwrap node-repl
+    for a nicer command-line interface.
+    EOS
   end
 end

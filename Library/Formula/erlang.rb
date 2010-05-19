@@ -1,14 +1,17 @@
 require 'formula'
 
 class ErlangManuals <Formula
-  url 'http://www.erlang.org/download/otp_doc_man_R13B03.tar.gz'
-  md5 '1fe80b110061ef73614824fb06d4d6eb'
+  url 'http://www.erlang.org/download/otp_doc_man_R13B04.tar.gz'
+  md5 '681aaef70affc64743f4e8c0675034af'
 end
 
 class Erlang <Formula
-  version 'R13B03'
+  version 'R13B04'
   url "http://erlang.org/download/otp_src_#{version}.tar.gz"
-  md5 '411fcb29f0819973f71e28f6b56d9948'
+  md5 'ca6da4921e438891967900aa6a084341'
+
+  # Use `brew install erlang --HEAD` to download from (faster than tarball) GitHub repo.
+  head "git://github.com/erlang/otp.git", :tag => "OTP_R13B04"
   homepage 'http://www.erlang.org'
 
   # we can't strip the beam executables or any plugins
@@ -20,30 +23,19 @@ class Erlang <Formula
   # may as well skip this too, everything is just shell scripts
   skip_clean 'bin'
 
-  def patches
-    { :p0 => ["patch-erts_emulator_Makefile.in",
-              "patch-erts_emulator_hipe_hipe_amd64_asm.m4.diff",
-              "patch-erts_emulator_hipe_hipe_amd64_bifs.m4.diff",
-              "patch-erts_emulator_hipe_hipe_amd64_glue.S.diff",
-              "patch-erts_emulator_hipe_hipe_amd64.c.diff",
-              "patch-erts_emulator_sys_unix_sys_float.c.diff",
-              "patch-lib_ssl_c_src_esock_openssl.c",
-              "patch-lib_wx_configure.in",
-              "patch-lib_wx_configure"
-            ].map { |file_name| "http://svn.macports.org/repository/macports/!svn/bc/60054/trunk/dports/lang/erlang/files/#{file_name}" }
-    }
-  end
-
   def install
     ENV.deparallelize
     ENV.gcc_4_2 # see http://github.com/mxcl/homebrew/issues/#issue/120
 
+    # If building from GitHub, this step is required (but not for tarball downloads.)
+    system "./otp_build autoconf" if File.exist? "otp_build"
+
     config_flags = ["--disable-debug",
-                          "--prefix=#{prefix}",
-                          "--enable-kernel-poll",
-                          "--enable-threads",
-                          "--enable-dynamic-ssl-lib",
-                          "--enable-smp-support"]
+                    "--prefix=#{prefix}",
+                    "--enable-kernel-poll",
+                    "--enable-threads",
+                    "--enable-dynamic-ssl-lib",
+                    "--enable-smp-support"]
 
     unless ARGV.include? '--disable-hipe'
       # HIPE doesn't strike me as that reliable on OS X
@@ -54,7 +46,6 @@ class Erlang <Formula
 
     if Hardware.is_64_bit? and MACOS_VERSION >= 10.6
       config_flags << "--enable-darwin-64bit" 
-      config_flags << "--enable-m64-build"
     end
 
     system "./configure", *config_flags

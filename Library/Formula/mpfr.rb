@@ -7,13 +7,12 @@ class Mpfr <Formula
 
   depends_on 'gmp'
 
+  def patches
+    {:p1 => ['http://www.mpfr.org/mpfr-current/allpatches']}
+  end
+
   def install
-      configure_args = [
-          "--prefix=#{prefix}",
-          "--disable-debug",
-          "--disable-dependency-tracking",
-      ]
-    system "./configure", *configure_args
+    system "./configure", "--disable-dependency-tracking", "--prefix=#{prefix}"
     system "make install"
   end
 end

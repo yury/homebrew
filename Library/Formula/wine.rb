@@ -1,12 +1,20 @@
 require 'formula'
 
 class Wine <Formula
-  url 'http://ibiblio.org/pub/linux/system/emulators/wine/wine-1.1.37.tar.bz2'
-  md5 'a9144360723c8276dffdbcea9c1028d5'
+  url 'http://downloads.sourceforge.net/project/wine/Source/wine-1.1.42.tar.bz2'
+  sha1 'ea932f19528a22eacc49f16100dbf2251cb4ad5c'
   homepage 'http://www.winehq.org/'
+  head 'git://source.winehq.org/git/wine.git'
 
   depends_on 'jpeg'
   depends_on 'mpg123' => :optional
+
+  def wine_wrapper; <<-EOS
+#!/bin/sh
+DYLD_FALLBACK_LIBRARY_PATH="/usr/X11/lib" \
+"#{bin}/wine.bin" "$@"
+EOS
+  end
 
   def install
     # Wine does not compile with LLVM yet
@@ -22,34 +30,21 @@ class Wine <Formula
     ENV.append "LDFLAGS", [build32, "-framework CoreServices", "-lz", "-lGL -lGLU"].join(' ')
     ENV.append "DYLD_FALLBACK_LIBRARY_PATH", "/usr/X11/lib"
 
-    system "./configure", "--prefix=#{prefix}", "--disable-debug", "--disable-dependency-tracking", "--disable-win16"
+    system "./configure", "--disable-debug", "--disable-dependency-tracking",
+                          "--prefix=#{prefix}",
+                          "--disable-win16"
     system "make install"
-    rename_binary
-    install_wrapper
+
+    # Use a wrapper script, so rename wine to wine.bin
+    # and name our startup script wine
+    mv (bin+'wine'), (bin+'wine.bin')
+    (bin+'wine').write(wine_wrapper)
   end
 
-  def caveats; <<-EOS
-Get winetricks with:
-    wget http://www.kegel.com/wine/winetricks > #{prefix}/bin/winetricks
-    chmod +x #{prefix}/bin/winetricks
-    brew link wine
+  def caveats
+    <<-EOS.undent
+      You may also want to get winetricks:
+        brew install winetricks
     EOS
   end
-
-  def wine_wrapper
-    DATA
-  end
-
-  def rename_binary
-    (bin+'wine').rename(bin+'wine.bin')
-  end
-
-  def install_wrapper
-    (bin+'wine').write(wine_wrapper.read.gsub('@PREFIX@', prefix))
-  end
 end
-
-__END__
-#!/bin/sh
-DYLD_FALLBACK_LIBRARY_PATH="/usr/X11/lib" \
-"@PREFIX@/bin/wine.bin" "$@"

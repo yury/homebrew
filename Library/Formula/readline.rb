@@ -18,6 +18,8 @@ to keg-only.
   end
 
   def install
+    # Always build universal, per http://github.com/mxcl/homebrew/issues/issue/899
+    ENV.universal_binary
     system "./configure", "--prefix=#{prefix}",
                           "--mandir=#{man}",
                           "--infodir=#{info}",

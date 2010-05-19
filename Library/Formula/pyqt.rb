@@ -4,9 +4,9 @@ require 'formula'
 # currently easy_install doesn't seem to support it
 
 class Pyqt <Formula
-  url 'http://www.riverbankcomputing.co.uk/static/Downloads/PyQt4/PyQt-mac-gpl-4.6.2.tar.gz'
+  url 'http://www.riverbankcomputing.co.uk/static/Downloads/PyQt4/PyQt-mac-gpl-4.7.3.tar.gz'
   homepage 'http://www.riverbankcomputing.co.uk/software/pyqt'
-  md5 '2bde0a6ab4728048962075e12a32d8e6'
+  md5 '55ecd293b4a0e337b9c7e10479c53d96'
 
   depends_on 'sip'
   depends_on 'qt'
